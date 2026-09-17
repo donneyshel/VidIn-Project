@@ -1,2 +1,0 @@
-# VidIn-Project
-Video Insight 
