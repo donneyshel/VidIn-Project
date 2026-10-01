@@ -98,8 +98,12 @@ export function InsightVaultDemo({
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isChatting, setIsChatting] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [speakingTarget, setSpeakingTarget] = useState<
+    'transcript' | 'analysis' | 'chat' | null
+  >(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const stopRequested = useRef(false)
+  const speechRunId = useRef(0)
   const [error, setError] = useState('')
 
   function clearResults() {
@@ -351,14 +355,25 @@ export function InsightVaultDemo({
 
   function handleStopSpeaking() {
     stopRequested.current = true
+    speechRunId.current += 1
 
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
+    const audio = audioRef.current
+
+    if (audio) {
+      const source = audio.currentSrc || audio.src
+
+      audio.pause()
+      audio.currentTime = 0
+
+      if (source.startsWith('blob:')) {
+        URL.revokeObjectURL(source)
+      }
+
       audioRef.current = null
     }
 
     setIsSpeaking(false)
+    setSpeakingTarget(null)
   }
 
   async function handleSpeak(text: string) {
@@ -376,7 +391,12 @@ export function InsightVaultDemo({
       return
     }
 
+    stopRequested.current = false
+    const runId = speechRunId.current + 1
+    speechRunId.current = runId
+
     setIsSpeaking(true)
+    setSpeakingTarget('analysis')
     setError("")
 
     try {
@@ -409,31 +429,86 @@ export function InsightVaultDemo({
         throw new Error("No audio was returned.")
       }
 
+      if (
+        stopRequested.current ||
+        speechRunId.current !== runId
+      ) {
+        return
+      }
+
       const audioUrl = URL.createObjectURL(audioBlob)
       const audio = new Audio(audioUrl)
 
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl)
-        setIsSpeaking(false)
-      }
+      audioRef.current = audio
 
-      audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl)
-        setIsSpeaking(false)
-        setError("The generated audio could not be played.")
-      }
+      await new Promise<void>((resolve, reject) => {
+        let settled = false
 
-      await audio.play()
+        const cleanup = () => {
+          if (audioRef.current === audio) {
+            audioRef.current = null
+          }
+
+          URL.revokeObjectURL(audioUrl)
+        }
+
+        const finish = () => {
+          if (settled) return
+          settled = true
+          cleanup()
+          resolve()
+        }
+
+        audio.onended = finish
+
+        audio.onpause = () => {
+          if (stopRequested.current || speechRunId.current !== runId) {
+            finish()
+          }
+        }
+
+        audio.onerror = () => {
+          if (stopRequested.current || speechRunId.current !== runId) {
+            finish()
+            return
+          }
+
+          settled = true
+          cleanup()
+          reject(new Error("The generated audio could not be played."))
+        }
+
+        audio.play().catch((error) => {
+          if (stopRequested.current || speechRunId.current !== runId) {
+            finish()
+            return
+          }
+
+          settled = true
+          cleanup()
+          reject(error)
+        })
+      })
     } catch (err) {
-      console.error("Voice generation error:", err)
+      if (
+        stopRequested.current ||
+        speechRunId.current !== runId
+      ) {
+        return
+      }
 
-      setIsSpeaking(false)
+      console.error("Voice generation error:", err)
 
       setError(
         err instanceof Error
           ? err.message
           : "Something went wrong while generating speech."
       )
+    } finally {
+      if (speechRunId.current === runId) {
+        setIsSpeaking(false)
+        setSpeakingTarget(null)
+      }
     }
   }
 
@@ -491,11 +566,23 @@ export function InsightVaultDemo({
       return
     }
 
+    stopRequested.current = false
+    const runId = speechRunId.current + 1
+    speechRunId.current = runId
+
     setIsSpeaking(true)
+    setSpeakingTarget('transcript')
     setError("")
 
     try {
       for (const speechChunk of speechChunks) {
+        if (
+          stopRequested.current ||
+          speechRunId.current !== runId
+        ) {
+          return
+        }
+
         const response = await fetch("/api/speech", {
           method: "POST",
           headers: {
@@ -525,26 +612,86 @@ export function InsightVaultDemo({
           throw new Error("No audio was returned.")
         }
 
+        if (
+          stopRequested.current ||
+          speechRunId.current !== runId
+        ) {
+          return
+        }
+
         const audioUrl = URL.createObjectURL(audioBlob)
         const audio = new Audio(audioUrl)
 
         audioRef.current = audio
 
         await new Promise<void>((resolve, reject) => {
-          audio.onended = () => {
+          let settled = false
+
+          const cleanup = () => {
+            if (audioRef.current === audio) {
+              audioRef.current = null
+            }
+
             URL.revokeObjectURL(audioUrl)
+          }
+
+          const finish = () => {
+            if (settled) return
+            settled = true
+            cleanup()
             resolve()
           }
 
-          audio.onerror = () => {
-            URL.revokeObjectURL(audioUrl)
-            reject(new Error("The generated audio could not be played."))
+          audio.onended = finish
+
+          audio.onpause = () => {
+            if (
+              stopRequested.current ||
+              speechRunId.current !== runId
+            ) {
+              finish()
+            }
           }
 
-          audio.play().catch(reject)
+          audio.onerror = () => {
+            if (
+              stopRequested.current ||
+              speechRunId.current !== runId
+            ) {
+              finish()
+              return
+            }
+
+            settled = true
+            cleanup()
+            reject(
+              new Error("The generated audio could not be played.")
+            )
+          }
+
+          audio.play().catch((error) => {
+            if (
+              stopRequested.current ||
+              speechRunId.current !== runId
+            ) {
+              finish()
+              return
+            }
+
+            settled = true
+            cleanup()
+            reject(error)
+          })
         })
       }
     } catch (err) {
+      if (
+        stopRequested.current ||
+        speechRunId.current !== runId
+      ) {
+        return
+      }
+
       console.error("Transcript voice generation error:", err)
 
       setError(
@@ -553,94 +700,174 @@ export function InsightVaultDemo({
           : "Something went wrong while reading the transcript."
       )
     } finally {
-      setIsSpeaking(false)
+      if (speechRunId.current === runId) {
+        setIsSpeaking(false)
+        setSpeakingTarget(null)
+      }
     }
   }
 
   async function handleSpeakChatAnswer() {
-  const latestAssistantMessage =
-    [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant")
-      ?.content || chatAnswer
+    const latestAssistantMessage =
+      [...messages]
+        .reverse()
+        .find((message) => message.role === "assistant")
+        ?.content || chatAnswer
 
-  const speechText = latestAssistantMessage.trim()
+    const speechText = latestAssistantMessage.trim()
 
-  if (!speechText) {
-    setError("There is no AI Chat answer available to read aloud.")
-    return
-  }
-
-  const speechChunks = splitSpeechText(speechText)
-
-  if (speechChunks.length === 0) {
-    setError("There is no AI Chat answer available to read aloud.")
-    return
-  }
-
-  setIsSpeaking(true)
-  setError("")
-
-  try {
-    for (const speechChunk of speechChunks) {
-      const response = await fetch("/api/speech", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: speechChunk,
-        }),
-      })
-
-      if (!response.ok) {
-        let message = "Voice generation failed."
-
-        try {
-          const data = await response.json()
-          message = data?.error || message
-        } catch {
-          // Keep the default error message.
-        }
-
-        throw new Error(message)
-      }
-
-      const audioBlob = await response.blob()
-
-      if (!audioBlob.size) {
-        throw new Error("No audio was returned.")
-      }
-
-      const audioUrl = URL.createObjectURL(audioBlob)
-      const audio = new Audio(audioUrl)
-
-      await new Promise<void>((resolve, reject) => {
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl)
-          resolve()
-        }
-
-        audio.onerror = () => {
-          URL.revokeObjectURL(audioUrl)
-          reject(new Error("The generated audio could not be played."))
-        }
-
-        audio.play().catch(reject)
-      })
+    if (!speechText) {
+      setError("There is no AI Chat answer available to read aloud.")
+      return
     }
-  } catch (err) {
-    console.error("AI Chat voice generation error:", err)
 
-    setError(
-      err instanceof Error
-        ? err.message
-        : "Something went wrong while reading the AI Chat answer."
-    )
-  } finally {
-    setIsSpeaking(false)
+    const speechChunks = splitSpeechText(speechText)
+
+    if (speechChunks.length === 0) {
+      setError("There is no AI Chat answer available to read aloud.")
+      return
+    }
+
+    stopRequested.current = false
+    const runId = speechRunId.current + 1
+    speechRunId.current = runId
+
+    setIsSpeaking(true)
+    setSpeakingTarget('chat')
+    setError("")
+
+    try {
+      for (const speechChunk of speechChunks) {
+        if (
+          stopRequested.current ||
+          speechRunId.current !== runId
+        ) {
+          return
+        }
+
+        const response = await fetch("/api/speech", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: speechChunk,
+          }),
+        })
+
+        if (!response.ok) {
+          let message = "Voice generation failed."
+
+          try {
+            const data = await response.json()
+            message = data?.error || message
+          } catch {
+            // Keep the default error message.
+          }
+
+          throw new Error(message)
+        }
+
+        const audioBlob = await response.blob()
+
+        if (!audioBlob.size) {
+          throw new Error("No audio was returned.")
+        }
+
+        if (
+          stopRequested.current ||
+          speechRunId.current !== runId
+        ) {
+          return
+        }
+
+        const audioUrl = URL.createObjectURL(audioBlob)
+        const audio = new Audio(audioUrl)
+
+        audioRef.current = audio
+
+        await new Promise<void>((resolve, reject) => {
+          let settled = false
+
+          const cleanup = () => {
+            if (audioRef.current === audio) {
+              audioRef.current = null
+            }
+
+            URL.revokeObjectURL(audioUrl)
+          }
+
+          const finish = () => {
+            if (settled) return
+            settled = true
+            cleanup()
+            resolve()
+          }
+
+          audio.onended = finish
+
+          audio.onpause = () => {
+            if (
+              stopRequested.current ||
+              speechRunId.current !== runId
+            ) {
+              finish()
+            }
+          }
+
+          audio.onerror = () => {
+            if (
+              stopRequested.current ||
+              speechRunId.current !== runId
+            ) {
+              finish()
+              return
+            }
+
+            settled = true
+            cleanup()
+            reject(
+              new Error("The generated audio could not be played.")
+            )
+          }
+
+          audio.play().catch((error) => {
+            if (
+              stopRequested.current ||
+              speechRunId.current !== runId
+            ) {
+              finish()
+              return
+            }
+
+            settled = true
+            cleanup()
+            reject(error)
+          })
+        })
+      }
+    } catch (err) {
+      if (
+        stopRequested.current ||
+        speechRunId.current !== runId
+      ) {
+        return
+      }
+
+      console.error("AI Chat voice generation error:", err)
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while reading the AI Chat answer."
+      )
+    } finally {
+      if (speechRunId.current === runId) {
+        setIsSpeaking(false)
+        setSpeakingTarget(null)
+      }
+    }
   }
-}
 
 async function handleChat() {
     if (!transcript.trim()) {
@@ -925,10 +1152,16 @@ async function handleChat() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={handleSpeakTranscript}
-                  disabled={isSpeaking}
+                  onClick={
+                    speakingTarget === 'transcript'
+                      ? handleStopSpeaking
+                      : handleSpeakTranscript
+                  }
+                  disabled={isSpeaking && speakingTarget !== 'transcript'}
                 >
-                  {isSpeaking ? "Reading..." : "Read Transcript"}
+                  {speakingTarget === 'transcript'
+                    ? "Stop Reading"
+                    : "Read Transcript"}
                 </Button>
               </div>
 
@@ -1011,10 +1244,16 @@ async function handleChat() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => handleSpeak(analysis)}
-                    disabled={isSpeaking}
+                    onClick={
+                      speakingTarget === 'analysis'
+                        ? handleStopSpeaking
+                        : () => handleSpeak(analysis)
+                    }
+                    disabled={isSpeaking && speakingTarget !== 'analysis'}
                   >
-                    {isSpeaking ? "Reading..." : "Read Analysis"}
+                    {speakingTarget === 'analysis'
+                      ? "Stop Reading"
+                      : "Read Analysis"}
                   </Button>
                 </div>
               </div>
@@ -1105,11 +1344,15 @@ async function handleChat() {
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={handleSpeakChatAnswer}
-                            disabled={isSpeaking}
+                            onClick={
+                              speakingTarget === 'chat'
+                                ? handleStopSpeaking
+                                : handleSpeakChatAnswer
+                            }
+                            disabled={isSpeaking && speakingTarget !== 'chat'}
                           >
-                            {isSpeaking
-                              ? 'Reading...'
+                            {speakingTarget === 'chat'
+                              ? 'Stop Reading'
                               : 'Read AI Chat Answer'}
                           </Button>
                         </div>
