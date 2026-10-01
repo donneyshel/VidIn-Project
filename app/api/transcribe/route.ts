@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import OpenAI from "openai"
 import { createClient } from "@/lib/supabase/server"
+import { buildTranscriptChunks } from "@/lib/transcript-chunks"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -79,6 +80,32 @@ export async function POST(request: Request) {
         },
         { status: 500 }
       )
+    }
+
+    const chunks = buildTranscriptChunks(segments)
+
+    if (chunks.length > 0) {
+      const { error: chunkError } = await supabase
+        .from("transcript_chunks")
+        .insert(
+          chunks.map((chunk) => ({
+            recording_id: recording.id,
+            user_id: user.id,
+            ...chunk,
+          }))
+        )
+
+      if (chunkError) {
+        console.error("Transcript chunk save error:", chunkError)
+
+        return NextResponse.json(
+          {
+            error: "Recording was saved, but transcript chunks could not be saved.",
+            details: chunkError.message,
+          },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({
