@@ -6,12 +6,12 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
 const COLORS = {
-  white: '#f7f7f5',
-  silver: '#969ba6',
-  signal: '#8b7cff',
-  insight: '#9b7cff',
-  creator: '#ffb45c',
-  live: '#55d6ff',
+  white: '#ffffff',
+  silver: '#c5cad6',
+  signal: '#a99cff',
+  insight: '#b59cff',
+  creator: '#ffc66d',
+  live: '#72ddff',
 }
 
 type NodeData = {
@@ -114,7 +114,94 @@ function IntelligenceField() {
 
   return (
     <group ref={group} scale={1.15}>
-      {/* The invisible architecture */}
+      {/* Monumental color architecture */}
+      <group position={[0, 0, -4.2]}>
+        {/* Main violet wall */}
+        <mesh position={[-1.8, 0.4, 0]} rotation={[0, 0, -0.035]}>
+          <planeGeometry args={[11, 8]} />
+          <meshBasicMaterial
+            color={COLORS.signal}
+            transparent
+            opacity={0.16}
+          />
+        </mesh>
+
+        {/* Inner violet depth layer */}
+        <mesh position={[-1.2, 0.2, 0.12]} rotation={[0, 0, -0.025]}>
+          <planeGeometry args={[8.5, 6.5]} />
+          <meshBasicMaterial
+            color={COLORS.insight}
+            transparent
+            opacity={0.10}
+          />
+        </mesh>
+
+        {/* Cyan architectural wall */}
+        <mesh position={[4.6, 0.7, -0.5]} rotation={[0, 0.045, 0.06]}>
+          <planeGeometry args={[7, 9]} />
+          <meshBasicMaterial
+            color={COLORS.live}
+            transparent
+            opacity={0.105}
+          />
+        </mesh>
+
+        {/* Amber distant wall */}
+        <mesh position={[1.8, -2.2, -1]} rotation={[0, -0.04, -0.04]}>
+          <planeGeometry args={[9, 4.5]} />
+          <meshBasicMaterial
+            color={COLORS.creator}
+            transparent
+            opacity={0.075}
+          />
+        </mesh>
+
+        {/* Architectural vertical divisions */}
+        {[-5.2, -3.7, -2.2, -0.7, 0.8, 2.3, 3.8, 5.3].map(
+          (x, index) => (
+            <mesh
+              key={`wall-column-${index}`}
+              position={[x, 0, 0.22]}
+            >
+              <boxGeometry args={[0.018, 7.2, 0.035]} />
+              <meshBasicMaterial
+                color={
+                  index % 3 === 0
+                    ? COLORS.signal
+                    : index % 3 === 1
+                      ? COLORS.live
+                      : COLORS.white
+                }
+                transparent
+                opacity={0.16}
+              />
+            </mesh>
+          ),
+        )}
+
+        {/* Horizontal monumental divisions */}
+        {[-2.5, -1.25, 0, 1.25, 2.5].map(
+          (y, index) => (
+            <mesh
+              key={`wall-line-${index}`}
+              position={[0, y, 0.24]}
+            >
+              <boxGeometry args={[11.5, 0.012, 0.035]} />
+              <meshBasicMaterial
+                color={
+                  index % 2 === 0
+                    ? COLORS.signal
+                    : COLORS.white
+                }
+                transparent
+                opacity={0.11}
+              />
+            </mesh>
+          ),
+        )}
+      </group>
+
+      {/* Living information architecture */}
       <group>
         {connections.map(([from, to], index) => (
           <Line

@@ -50,10 +50,15 @@ export function SiteNav() {
         </div>
 
         <div className="hidden items-center gap-2 lg:flex">
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+            render={<Link href="/auth" />}
+          >
             Sign In
           </Button>
-          <Button size="sm" className="rounded-lg" render={<Link href="/pricing" />}>
+          <Button size="sm" className="rounded-lg" render={<Link href="/auth" />}>
             Get Started
           </Button>
         </div>
@@ -90,10 +95,14 @@ export function SiteNav() {
               )
             })}
             <div className="mt-2 flex flex-col gap-2 border-t border-border pt-3">
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href="/auth" onClick={() => setOpen(false)} />}
+              >
                 Sign In
               </Button>
-              <Button size="sm" render={<Link href="/pricing" onClick={() => setOpen(false)} />}>
+              <Button size="sm" render={<Link href="/auth" onClick={() => setOpen(false)} />}>
                 Get Started
               </Button>
             </div>

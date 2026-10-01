@@ -36,6 +36,16 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+
+  /* Vidin brand colors */
+  --color-vidin-black: var(--vidin-black);
+  --color-vidin-white: var(--vidin-white);
+  --color-vidin-silver: var(--vidin-silver);
+  --color-vidin-signal: var(--vidin-signal);
+  --color-insight: var(--insight);
+  --color-creator: var(--creator);
+  --color-live: var(--live);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,6 +59,19 @@
 
 :root {
   color-scheme: dark;
+
+  /* Vidin visual system */
+  --vidin-black: #08090c;
+  --vidin-white: #f7f7f5;
+  --vidin-silver: #969ba6;
+  --vidin-signal: #8b7cff;
+
+  /* Vault identities */
+  --insight: #9b7cff;
+  --creator: #ffb45c;
+  --live: #55d6ff;
+
+  /* Core application theme */
   --background: #0d0e12;
   --foreground: #ffffff;
   --card: #16181e;
@@ -100,4 +123,35 @@
 
 @utility glow-border {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 0 40px -12px rgba(255, 255, 255, 0.12);
+}
+
+@utility text-gradient-vidin {
+  background: linear-gradient(110deg, var(--vidin-white), var(--vidin-silver));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+@utility signal-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vidin-signal) 20%, transparent),
+    0 0 80px -24px color-mix(in srgb, var(--vidin-signal) 45%, transparent);
+}
+
+@utility insight-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--insight) 18%, transparent),
+    0 0 80px -24px color-mix(in srgb, var(--insight) 38%, transparent);
+}
+
+@utility creator-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--creator) 18%, transparent),
+    0 0 80px -24px color-mix(in srgb, var(--creator) 32%, transparent);
+}
+
+@utility live-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--live) 18%, transparent),
+    0 0 80px -24px color-mix(in srgb, var(--live) 34%, transparent);
 }

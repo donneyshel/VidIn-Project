@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowDown, ArrowRight, AudioLines, BrainCircuit, Radio } from 'lucide-react'
 import { SectionLabel } from '@/components/section-label'
 import { VidinIntelligenceWorld } from '@/components/vidin-world/vidin-intelligence-world'
+import { VidinSystemWorld } from '@/components/vidin-world/vidin-system-world'
 
 const vaults = [
   {
@@ -97,26 +98,47 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* PHILOSOPHY */}
-      <section className="border-y border-border px-5 py-28 sm:px-8 sm:py-40 lg:px-12">
-        <div className="mx-auto max-w-[1500px]">
-          <div className="grid gap-12 lg:grid-cols-[0.7fr_1.3fr]">
-            <div>
-              <SectionLabel>The Vidin system</SectionLabel>
-            </div>
+      {/* THE VIDIN SYSTEM — CHAPTER 02 */}
+      <section className="relative min-h-[100svh] overflow-hidden">
+        <div className="absolute inset-0">
+          <VidinSystemWorld />
+        </div>
 
-            <div>
-              <p className="max-w-5xl text-balance text-3xl font-medium leading-[1.05] tracking-[-0.04em] sm:text-5xl lg:text-6xl">
-                The world produces more media every second. Vidin turns that stream into
-                something you can actually work with.
-              </p>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,transparent_10%,rgba(24,14,64,0.12)_48%,rgba(12,7,32,0.72)_100%)]" />
 
-              <p className="mt-10 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-                A lecture. A podcast. A campaign. A market broadcast. A live conversation.
-                Different media, one underlying problem: information moves faster than humans
-                can process it.
-              </p>
-            </div>
+        <div className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[1500px] flex-col justify-between px-5 py-10 sm:px-8 sm:py-14 lg:px-12">
+          <div className="flex items-start justify-between">
+            <SectionLabel>The Vidin system</SectionLabel>
+
+            <span className="hidden font-mono text-[9px] uppercase tracking-[0.28em] text-white/40 sm:block">
+              Media / Processing / Intelligence
+            </span>
+          </div>
+
+          <div className="max-w-5xl">
+            <p className="mb-7 font-mono text-[10px] uppercase tracking-[0.32em] text-white/45">
+              One intelligence engine
+            </p>
+
+            <h2 className="text-balance text-[clamp(3.5rem,8vw,8rem)] font-medium leading-[0.84] tracking-[-0.07em]">
+              The world produces
+              <br />
+              more media
+              <br />
+              <span className="text-white/45">every second.</span>
+            </h2>
+
+            <p className="mt-9 max-w-2xl text-base leading-7 text-white/60 sm:text-lg">
+              Vidin turns that moving stream into something you can actually work with —
+              transforming media into structured intelligence.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 text-white/35">
+            <span className="h-px w-10 bg-white/25" />
+            <span className="font-mono text-[9px] uppercase tracking-[0.3em]">
+              Media → Intelligence → Action
+            </span>
           </div>
         </div>
       </section>
