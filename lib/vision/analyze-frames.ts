@@ -1,8 +1,10 @@
 import OpenAI from "openai"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+function getOpenAIClient() {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 export type VisualAnalysis = {
   description: string
@@ -13,6 +15,8 @@ export type VisualAnalysis = {
 export async function analyzeFrame(
   imageBase64: string
 ): Promise<VisualAnalysis> {
+
+  const openai = getOpenAIClient()
 
   const response = await openai.responses.create({
     model: "gpt-5.6-luna",

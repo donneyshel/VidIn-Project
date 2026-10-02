@@ -8,6 +8,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { createClient } from '@/lib/supabase/server'
 import { buildTranscriptChunks } from '@/lib/transcript-chunks'
+import { processVideo } from '@/lib/video/process-video'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
