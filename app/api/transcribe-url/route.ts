@@ -9,6 +9,7 @@ import { promisify } from 'util'
 import { createClient } from '@/lib/supabase/server'
 import { buildTranscriptChunks } from '@/lib/transcript-chunks'
 import { processVideo } from '@/lib/video/process-video'
+import { saveVisualMemory } from '@/lib/video/save-visual-memory'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -208,6 +209,21 @@ export async function POST(request: Request) {
           { status: 500 }
         )
       }
+    }
+
+    try {
+      const visualResult = await processVideo(url)
+
+      await saveVisualMemory(
+        recording.id,
+        user.id,
+        visualResult.visualEvents
+      )
+    } catch (visualError) {
+      console.error(
+        'Visual pipeline error:',
+        visualError
+      )
     }
 
     return NextResponse.json({
