@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
+  const publicOrigin =
+    process.env.NODE_ENV === 'production'
+      ? 'https://vidin.pro'
+      : requestUrl.origin
+
   const code = requestUrl.searchParams.get('code')
   const requestedNext = requestUrl.searchParams.get('next')
 
@@ -18,12 +23,12 @@ export async function GET(request: Request) {
 
     if (!error) {
       return NextResponse.redirect(
-        new URL(allowedNext, requestUrl.origin)
+        new URL(allowedNext, publicOrigin)
       )
     }
   }
 
   return NextResponse.redirect(
-    new URL('/auth?error=auth_callback_failed', requestUrl.origin)
+    new URL('/auth?error=auth_callback_failed', publicOrigin)
   )
 }
