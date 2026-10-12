@@ -32,10 +32,10 @@ export default function CreatorsVaultPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Creators Vault · $68.99/mo"
+        eyebrow="Creators Vault · $29.99/mo"
         title="Cut the dead weight. Keep them watching."
         description="Built for video editors, influencers and agencies who live or die by retention and shareable moments."
-        price="$68.99 / month"
+        price="$29.99 / month"
         audience="Editors · Influencers · Agencies"
       />
 

@@ -32,10 +32,10 @@ export default function LiveEcosystemPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Live Ecosystem · $128.99/mo"
+        eyebrow="Live Ecosystem · $49.99/mo"
         title="Trade the words the moment they are spoken."
         description="Built for forex, crypto and stock investors who need macro signals turned into text and context in real time."
-        price="$128.99 / month"
+        price="$49.99 / month"
         audience="Forex · Crypto · Stocks"
       />
 

@@ -23,6 +23,7 @@
     "openai": "^7.8.0",
     "react": "^19",
     "react-dom": "^19",
+    "server-only": "^0.0.1",
     "shadcn": "^4.8.0",
     "tailwind-merge": "^3.3.1",
     "three": "^0.186.1",
@@ -36,6 +37,8 @@
     "@types/react-dom": "^19",
     "@types/three": "^0.186.0",
     "dotenv": "^18.0.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.2.6",
     "postcss": "^8.5",
     "supabase": "^2.118.0",
     "tailwindcss": "^4.3.3",
@@ -54,5 +57,6 @@
       "youtube-dl-exec",
       "yt-dlp-exec"
     ]
-  }
+  },
+  "packageManager": "pnpm@10.32.1"
 }

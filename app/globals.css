@@ -106,6 +106,70 @@
   --sidebar-ring: rgba(255, 255, 255, 0.35);
 }
 
+
+/* =========================================================
+   VIDIN USER APPEARANCE
+   ========================================================= */
+
+html.light {
+  color-scheme: light;
+
+  --background: #f7f7f8;
+  --foreground: #111217;
+  --card: #ffffff;
+  --card-foreground: #111217;
+  --popover: #ffffff;
+  --popover-foreground: #111217;
+  --primary: #111217;
+  --primary-foreground: #ffffff;
+  --secondary: #eceef2;
+  --secondary-foreground: #111217;
+  --muted: #f0f1f4;
+  --muted-foreground: #686d78;
+  --accent: #eceef2;
+  --accent-foreground: #111217;
+  --border: rgba(17, 18, 23, 0.10);
+  --input: rgba(17, 18, 23, 0.14);
+  --ring: color-mix(in srgb, var(--vidin-signal) 55%, transparent);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #111217;
+  --sidebar-primary: #111217;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eceef2;
+  --sidebar-accent-foreground: #111217;
+  --sidebar-border: rgba(17, 18, 23, 0.10);
+  --sidebar-ring: color-mix(in srgb, var(--vidin-signal) 55%, transparent);
+}
+
+html[data-accent='violet'] {
+  --vidin-signal: #8b7cff;
+}
+
+html[data-accent='blue'] {
+  --vidin-signal: #5b8cff;
+}
+
+html[data-accent='cyan'] {
+  --vidin-signal: #55d6ff;
+}
+
+html[data-accent='green'] {
+  --vidin-signal: #4ade80;
+}
+
+html[data-accent='amber'] {
+  --vidin-signal: #ffb45c;
+}
+
+html[data-accent='rose'] {
+  --vidin-signal: #fb7185;
+}
+
+html[data-accent] {
+  --ring: color-mix(in srgb, var(--vidin-signal) 55%, transparent);
+  --sidebar-ring: color-mix(in srgb, var(--vidin-signal) 55%, transparent);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

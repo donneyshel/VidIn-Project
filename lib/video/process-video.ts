@@ -8,7 +8,8 @@ import { processVideoVision } from "./process-video-vision"
 export type VidInProcessingResult = {
   visualEvents: {
     timestamp: number
-    description: string
+    eventType: "on_screen_text" | "slide" | "scene" | "action" | "object" | "visual_description"
+    content: string
   }[]
 }
 

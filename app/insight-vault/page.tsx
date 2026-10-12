@@ -32,10 +32,10 @@ export default function InsightVaultPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Insight Vault · $8.99/mo"
+        eyebrow="Insight Vault · Pay As You Go"
         title="Turn any recording into a study partner."
         description="Built for students, researchers and casual listeners who want to understand — not just replay — every recording."
-        price="$8.99 / month"
+        price="$0.09 / minute"
         audience="Students · Researchers · Listeners"
       />
 
@@ -62,13 +62,13 @@ export default function InsightVaultPage() {
       <section className="px-4 pb-28">
         <div className="glass-card glow-border mx-auto flex max-w-6xl flex-col items-center gap-6 rounded-3xl px-6 py-14 text-center">
           <h2 className="max-w-xl text-balance text-3xl font-semibold tracking-tight">
-            Study smarter for $8.99 a month.
+            Start free, then pay only for the minutes you use.
           </h2>
           <Link
             href="/pricing"
             className="inline-flex h-11 items-center justify-center rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
-            Subscribe to Insight Vault
+            Get Started with Insight Vault
           </Link>
         </div>
       </section>

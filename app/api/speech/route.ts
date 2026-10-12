@@ -2,9 +2,6 @@ import { NextResponse } from "next/server"
 import OpenAI from "openai"
 import { createClient } from "@/lib/supabase/server"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
 
 const MAX_INPUT_LENGTH = 4096
 
@@ -16,6 +13,10 @@ export async function POST(request: Request) {
         { status: 500 }
       )
     }
+
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
 
     const supabase = await createClient()
 

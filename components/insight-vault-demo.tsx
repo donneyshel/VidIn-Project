@@ -35,6 +35,15 @@ type SavedRecording = {
   updated_at: string
 }
 
+type EvidenceReference = {
+  id: string
+  type: "transcript_chunk" | "visual_event"
+  startTime?: number
+  endTime?: number
+  timestamp?: number
+  content: string
+}
+
 type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
@@ -65,6 +74,7 @@ export function InsightVaultDemo({
   )
 
   const [file, setFile] = useState<File | null>(null)
+  const uploadRequestKeyRef = useRef<string | null>(null)
   const [url, setUrl] = useState(
     initialRecording?.source_url ?? ''
   )
@@ -87,6 +97,9 @@ export function InsightVaultDemo({
   const [analysis, setAnalysis] = useState(
   initialRecording?.analysis ?? ''
 )
+  const [analysisEvidence, setAnalysisEvidence] = useState<EvidenceReference[]>([])
+  const [chatEvidence, setChatEvidence] = useState<EvidenceReference[]>([])
+  const [messageEvidence, setMessageEvidence] = useState<Record<string, EvidenceReference[]>>({})
   const [question, setQuestion] = useState('')
   const [chatAnswer, setChatAnswer] = useState('')
 
@@ -116,6 +129,8 @@ export function InsightVaultDemo({
     setChatAnswer('')
     setConversationId(null)
     setMessages([])
+    setMessageEvidence({})
+    setChatEvidence([])
     setError('')
   }
 
@@ -123,6 +138,7 @@ export function InsightVaultDemo({
     if (!recordingId) {
       setConversationId(null)
       setMessages([])
+      setMessageEvidence({})
       setIsLoadingConversation(false)
       return
     }
@@ -194,14 +210,35 @@ export function InsightVaultDemo({
 
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      if (!uploadRequestKeyRef.current) {
+        uploadRequestKeyRef.current = crypto.randomUUID()
+      }
+
+      formData.append('requestKey', uploadRequestKeyRef.current)
 
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
       })
 
-      const data = await response.json()
+      const responseText = await response.text()
+
+      console.log('URL transcription response:', {
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        bodyLength: responseText.length,
+        bodyPreview: responseText.slice(0, 500),
+      })
+
+      let data: any = {}
+
+      try {
+        data = responseText ? JSON.parse(responseText) : {}
+      } catch {
+        throw new Error(
+          `The server returned invalid JSON (status ${response.status}). Response: ${responseText.slice(0, 300)}`
+        )
+      }
 
       if (!response.ok) {
         throw new Error(data?.error || 'Transcription failed.')
@@ -233,6 +270,11 @@ export function InsightVaultDemo({
     }
   }
 
+  const urlRequestKeyRef = useRef<{
+    url: string
+    key: string
+  } | null>(null)
+
   async function handleTranscribeUrl() {
     const trimmedUrl = url.trim()
 
@@ -240,6 +282,18 @@ export function InsightVaultDemo({
       setError('Please paste a media URL first.')
       return
     }
+
+    if (
+      !urlRequestKeyRef.current ||
+      urlRequestKeyRef.current.url !== trimmedUrl
+    ) {
+      urlRequestKeyRef.current = {
+        url: trimmedUrl,
+        key: crypto.randomUUID(),
+      }
+    }
+
+    const requestKey = urlRequestKeyRef.current.key
 
     setIsTranscribing(true)
     setSourceType('url')
@@ -253,10 +307,21 @@ export function InsightVaultDemo({
         },
         body: JSON.stringify({
           url: trimmedUrl,
+          requestKey,
         }),
       })
 
-      const data = await response.json()
+      const responseText = await response.text()
+
+      let data: any = {}
+
+      try {
+        data = responseText ? JSON.parse(responseText) : {}
+      } catch {
+        throw new Error(
+          'The server returned an invalid response. Please try again.'
+        )
+      }
 
       if (!response.ok) {
         throw new Error(data?.error || 'URL transcription failed.')
@@ -308,6 +373,7 @@ export function InsightVaultDemo({
     setIsAnalyzing(true)
     setError('')
     setAnalysis('')
+    setAnalysisEvidence([])
 
     try {
       const response = await fetch('/api/analyze', {
@@ -332,6 +398,27 @@ export function InsightVaultDemo({
       }
 
       setAnalysis(data.analysis)
+      setAnalysisEvidence(
+        Array.isArray(data?.evidence)
+          ? data.evidence.map(
+              (item: {
+                id: string
+                type: 'transcript_chunk' | 'visual_event'
+                startTime?: number
+                endTime?: number
+                timestamp?: number
+                content: string
+              }) => ({
+                id: item.id,
+                type: item.type,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                timestamp: item.timestamp,
+                content: item.content,
+              }),
+            )
+          : [],
+      )
 
       if (data?.recording?.id) {
         setRecordingId(data.recording.id)
@@ -921,6 +1008,17 @@ async function handleChat() {
       }
 
       if (Array.isArray(data?.messages)) {
+        const assistantMessage = data.messages.find(
+          (message: ChatMessage) => message.role === 'assistant',
+        )
+
+        if (assistantMessage && Array.isArray(data?.evidence)) {
+          setMessageEvidence((previous) => ({
+            ...previous,
+            [assistantMessage.id]: data.evidence,
+          }))
+        }
+
         setMessages((previous) => {
           const existingIds = new Set(previous.map((message) => message.id))
           const newMessages = data.messages.filter(
@@ -931,6 +1029,9 @@ async function handleChat() {
         })
       } else {
         setChatAnswer(data.answer)
+        setChatEvidence(
+          Array.isArray(data?.evidence) ? data.evidence : [],
+        )
       }
 
       setQuestion('')
@@ -953,6 +1054,7 @@ async function handleChat() {
     const selectedFile = event.target.files?.[0] ?? null
 
     setFile(selectedFile)
+    uploadRequestKeyRef.current = selectedFile ? crypto.randomUUID() : null
 
     if (selectedFile) {
       setUrl('')
@@ -968,6 +1070,7 @@ async function handleChat() {
     const value = event.target.value
 
     setUrl(value)
+    uploadRequestKeyRef.current = null
 
     if (value.trim()) {
       setFile(null)
@@ -1240,6 +1343,33 @@ async function handleChat() {
                   {analysis}
                 </p>
 
+                {analysisEvidence.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-border bg-background/60 p-4">
+                    <div className="mb-3 text-sm font-semibold">
+                      Evidence
+                    </div>
+
+                    <div className="space-y-3">
+                      {analysisEvidence.slice(0, 8).map((item) => (
+                        <div
+                          key={`${item.type}-${item.id}`}
+                          className="rounded-lg border border-border bg-muted/20 p-3"
+                        >
+                          <div className="mb-1 text-xs font-semibold text-muted-foreground">
+                            {item.type === 'transcript_chunk'
+                              ? `${formatTimestamp(item.startTime ?? 0)} — ${formatTimestamp(item.endTime ?? item.startTime ?? 0)} · Transcript`
+                              : `${formatTimestamp(item.timestamp ?? 0)} · Visual`}
+                    </div>
+
+                          <p className="text-sm leading-6">
+                            {item.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4">
                   <Button
                     type="button"
@@ -1336,6 +1466,36 @@ async function handleChat() {
                     </p>
 
                     {message.role === 'assistant' &&
+                      (messageEvidence[message.id]?.length ?? 0) > 0 && (
+                        <div className="mt-5 rounded-xl border border-border bg-background/60 p-4">
+                          <div className="mb-3 text-sm font-semibold">
+                            Verified Evidence
+                          </div>
+                          <div className="space-y-3">
+                            {messageEvidence[message.id].slice(0, 8).map((item) => (
+                              <div
+                                key={item.id}
+                                className="rounded-lg border border-border bg-muted/20 p-3"
+                              >
+                                <div className="mb-1 text-xs font-semibold text-muted-foreground">
+                                  {item.type === 'transcript_chunk'
+                                    ? 'Transcript'
+                                    : 'Visual'}
+                                  {' · '}
+                                  {formatTimestamp(
+                                    item.timestamp ?? item.startTime ?? 0,
+                                  )}
+                                </div>
+                                <p className="text-sm leading-6">
+                                  {item.content}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    {message.role === 'assistant' &&
                       message.id ===
                         [...messages]
                           .reverse()
@@ -1374,6 +1534,22 @@ async function handleChat() {
                 <p className="whitespace-pre-wrap text-sm leading-7">
                   {chatAnswer}
                 </p>
+
+                {chatEvidence.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-border bg-background/60 p-4">
+                    <div className="mb-3 text-sm font-semibold">Evidence</div>
+                    <div className="space-y-3">
+                      {chatEvidence.slice(0, 8).map((item) => (
+                        <div key={item.id} className="rounded-lg border border-border bg-muted/20 p-3">
+                          <div className="mb-1 text-xs font-semibold text-muted-foreground">
+                            {item.type === 'transcript_chunk' ? 'Transcript' : 'Visual'}
+                          </div>
+                          <p className="text-sm leading-6">{item.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

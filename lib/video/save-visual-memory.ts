@@ -2,7 +2,14 @@ import { createClient } from "@/lib/supabase/server"
 
 export type VisualMemoryEvent = {
   timestamp: number
-  description: string
+  eventType:
+    | "on_screen_text"
+    | "slide"
+    | "scene"
+    | "action"
+    | "object"
+    | "visual_description"
+  content: string
 }
 
 export async function saveVisualMemory(
@@ -20,8 +27,8 @@ export async function saveVisualMemory(
     recording_id: recordingId,
     user_id: userId,
     timestamp_seconds: event.timestamp,
-    event_type: "visual_description",
-    content: event.description,
+    event_type: event.eventType,
+    content: event.content,
   }))
 
   const { error } = await supabase

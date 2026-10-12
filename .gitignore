@@ -12,5 +12,6 @@ __v0_jsx-dev-runtime.ts
 # Common ignores
 node_modules
 .next/
-.DS_Storeyoutube-cookies.txt
+.DS_Store\nyoutube-cookies.txt
 cookies.txt
+\n*.log\n*.bak\n*.tsbuildinfo\n.env\n.env.*\n!.env.example\n
