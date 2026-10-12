@@ -103,6 +103,10 @@ export async function POST(request: Request) {
           amount,
           currency: 'GHS',
           reference,
+          callback_url:
+            process.env.NODE_ENV === 'production'
+              ? 'https://vidin.pro/workspace/billing'
+              : 'http://localhost:3000/workspace/billing',
           metadata: {
             product: 'vidin_payg',
             minutes,
