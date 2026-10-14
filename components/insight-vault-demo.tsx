@@ -1,5 +1,6 @@
-
 'use client'
+
+import { restoreMessageEvidence } from '@/lib/chat/restore-message-evidence'
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -12,8 +13,14 @@ import {
   MessageSquareText,
   Send,
   Link,
+  Copy,
+  Check,
+  Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+
+const chatEditingUiEnabled =
+  process.env.NEXT_PUBLIC_VIDIN_CHAT_BRANCHES_ENABLED === 'true'
 
 type TranscriptSegment = {
   id: number
@@ -105,9 +112,16 @@ export function InsightVaultDemo({
 
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
+  const [revisingMessageId, setRevisingMessageId] = useState<string | null>(null)
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null)
+  const [conversationBranches, setConversationBranches] = useState<
+    Array<{ id: string | null; label: string }>
+  >([{ id: null, label: 'Original conversation' }])
   const [isLoadingConversation, setIsLoadingConversation] = useState(false)
 
   const [isTranscribing, setIsTranscribing] = useState(false)
+  const [isRecoveringTranscript, setIsRecoveringTranscript] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isChatting, setIsChatting] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -129,6 +143,9 @@ export function InsightVaultDemo({
     setChatAnswer('')
     setConversationId(null)
     setMessages([])
+    setActiveBranchId(null)
+    setConversationBranches([{ id: null, label: 'Original conversation' }])
+    setRevisingMessageId(null)
     setMessageEvidence({})
     setChatEvidence([])
     setError('')
@@ -138,6 +155,9 @@ export function InsightVaultDemo({
     if (!recordingId) {
       setConversationId(null)
       setMessages([])
+      setActiveBranchId(null)
+      setConversationBranches([{ id: null, label: 'Original conversation' }])
+      setRevisingMessageId(null)
       setMessageEvidence({})
       setIsLoadingConversation(false)
       return
@@ -167,11 +187,27 @@ export function InsightVaultDemo({
         }
 
         setConversationId(data?.conversationId ?? null)
+        setConversationBranches(
+          Array.isArray(data?.branches)
+            ? [
+                { id: null, label: 'Original conversation' },
+                ...data.branches
+                  .filter((branch: { id?: unknown }) =>
+                    typeof branch?.id === 'string'
+                  )
+                  .map((branch: { id: string }, index: number) => ({
+                    id: branch.id,
+                    label: `Version ${index + 1}`,
+                  })),
+              ]
+            : [{ id: null, label: 'Original conversation' }]
+        )
         setMessages(
           Array.isArray(data?.messages)
             ? data.messages
             : []
         )
+        setMessageEvidence(restoreMessageEvidence(data?.messages))
       } catch (err) {
         if (cancelled) {
           return
@@ -210,6 +246,7 @@ export function InsightVaultDemo({
 
     try {
       const formData = new FormData()
+      formData.append('file', file)
       if (!uploadRequestKeyRef.current) {
         uploadRequestKeyRef.current = crypto.randomUUID()
       }
@@ -223,7 +260,7 @@ export function InsightVaultDemo({
 
       const responseText = await response.text()
 
-      console.log('URL transcription response:', {
+      console.log('File upload transcription response:', {
         status: response.status,
         contentType: response.headers.get('content-type'),
         bodyLength: responseText.length,
@@ -241,7 +278,24 @@ export function InsightVaultDemo({
       }
 
       if (!response.ok) {
-        throw new Error(data?.error || 'Transcription failed.')
+        const message = data?.error || 'Transcription failed.'
+
+        if (
+          data?.code === 'PROCESSING_ALREADY_COMPLETED' ||
+          data?.code === 'RECORDING_RECOVERY_FAILED'
+        ) {
+          throw new Error(
+            `${message} Your recording may already be saved. Check your Media Library before trying again.`
+          )
+        }
+
+        if (data?.code === 'PROCESSING_IN_PROGRESS') {
+          throw new Error(
+            'Your upload is still processing. Please wait and check your Media Library before trying again.'
+          )
+        }
+
+        throw new Error(message)
       }
 
       if (!data?.transcript) {
@@ -260,12 +314,88 @@ export function InsightVaultDemo({
     } catch (err) {
       console.error('Transcription error:', err)
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Something went wrong while transcribing the file.'
-      )
+      setIsRecoveringTranscript(true)
+      let recovered = false
+      let recoveryStatus: string | null = null
+
+      const requestKey = uploadRequestKeyRef.current
+
+      if (requestKey) {
+        for (let attempt = 0; attempt < 12; attempt++) {
+          try {
+            const recoveryResponse = await fetch(
+              `/api/transcribe/recovery?requestKey=${encodeURIComponent(requestKey)}`,
+              { cache: 'no-store' }
+            )
+
+            const recoveryData = await recoveryResponse.json()
+
+            recoveryStatus =
+              typeof recoveryData?.status === 'string'
+                ? recoveryData.status
+                : null
+
+            if (
+              recoveryResponse.ok &&
+              recoveryData?.success === true &&
+              recoveryStatus === 'completed' &&
+              typeof recoveryData?.transcript === 'string' &&
+              recoveryData.transcript.trim() &&
+              typeof recoveryData?.recording?.id === 'string'
+            ) {
+              setRecordingId(recoveryData.recording.id)
+              setRecordingTitle(
+                recoveryData.recording.title ?? file.name ?? 'Untitled recording'
+              )
+              setTranscript(recoveryData.transcript)
+              setSegments(
+                Array.isArray(recoveryData.segments)
+                  ? recoveryData.segments
+                  : []
+              )
+              setError('')
+              recovered = true
+              break
+            }
+
+            if (
+              recoveryStatus === 'refunded' ||
+              recoveryStatus === 'not_found' ||
+              recoveryStatus === 'completed'
+            ) {
+              break
+            }
+
+            if (!recoveryResponse.ok && recoveryResponse.status !== 404) {
+              break
+            }
+          } catch (recoveryError) {
+            console.error('Transcript recovery check failed:', recoveryError)
+            break
+          }
+
+          if (attempt < 11) {
+            await new Promise<void>((resolve) =>
+              setTimeout(resolve, 5000)
+            )
+          }
+        }
+      }
+
+      if (!recovered) {
+        const originalMessage =
+          err instanceof Error
+            ? err.message
+            : 'Something went wrong while transcribing the file.'
+
+        setError(
+          recoveryStatus === 'reserved'
+            ? 'Your upload is still processing. Please wait before trying again.'
+            : originalMessage
+        )
+      }
     } finally {
+      setIsRecoveringTranscript(false)
       setIsTranscribing(false)
     }
   }
@@ -956,6 +1086,83 @@ export function InsightVaultDemo({
     }
   }
 
+async function handleSwitchConversationBranch(
+  nextBranchId: string | null,
+  options: {
+    afterEdit?: boolean
+    preserveEvidence?: {
+      messageId: string
+      evidence: typeof chatEvidence
+    }
+  } = {},
+) {
+  if (
+    !recordingId ||
+    isLoadingConversation ||
+    (isChatting && !options.afterEdit)
+  ) return
+
+  setIsLoadingConversation(true)
+  setError("")
+
+  try {
+    const params = new URLSearchParams({ recordingId })
+
+    if (nextBranchId) {
+      params.set("branchId", nextBranchId)
+    }
+
+    const response = await fetch(`/api/chat?${params.toString()}`)
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error || "Failed to load conversation version."
+      )
+    }
+
+    setActiveBranchId(nextBranchId)
+    setConversationId(data?.conversationId ?? null)
+    setMessages(Array.isArray(data?.messages) ? data.messages : [])
+    setConversationBranches(
+      Array.isArray(data?.branches)
+        ? [
+            { id: null, label: "Original conversation" },
+            ...data.branches
+              .filter((branch: { id?: unknown }) =>
+                typeof branch?.id === "string"
+              )
+              .map((branch: { id: string }, index: number) => ({
+                id: branch.id,
+                label: `Version ${index + 1}`,
+              })),
+          ]
+        : [{ id: null, label: "Original conversation" }]
+    )
+    setRevisingMessageId(null)
+    setQuestion("")
+    setChatAnswer("")
+    setChatEvidence([])
+    setMessageEvidence({
+      ...restoreMessageEvidence(data?.messages),
+      ...(options.preserveEvidence
+        ? {
+            [options.preserveEvidence.messageId]:
+              options.preserveEvidence.evidence,
+          }
+        : {}),
+    })
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Failed to switch conversation version."
+    )
+  } finally {
+    setIsLoadingConversation(false)
+  }
+}
+
 async function handleChat() {
     if (!transcript.trim()) {
       setError('A transcript is required before using AI Chat.')
@@ -988,6 +1195,14 @@ async function handleChat() {
         },
         body: JSON.stringify({
           recordingId,
+          ...(revisingMessageId
+            ? {
+                editMessageId: revisingMessageId,
+                ...(activeBranchId ? { branchId: activeBranchId } : {}),
+              }
+            : activeBranchId
+              ? { branchId: activeBranchId }
+              : {}),
           transcript,
           question: currentQuestion,
         }),
@@ -1035,6 +1250,41 @@ async function handleChat() {
       }
 
       setQuestion('')
+      if (typeof data?.branchId === "string") {
+        const newBranchId = data.branchId
+
+        setActiveBranchId(newBranchId)
+        setConversationBranches((previous) =>
+          previous.some((branch) => branch.id === newBranchId)
+            ? previous
+            : [
+                ...previous,
+                {
+                  id: newBranchId,
+                  label: `Version ${previous.length}`,
+                },
+              ]
+        )
+
+        const regeneratedAssistantMessage = Array.isArray(data?.messages)
+          ? data.messages.find(
+              (message: ChatMessage) => message.role === 'assistant'
+            )
+          : null
+
+        await handleSwitchConversationBranch(newBranchId, {
+          afterEdit: true,
+          preserveEvidence:
+            regeneratedAssistantMessage && Array.isArray(data?.evidence)
+              ? {
+                  messageId: regeneratedAssistantMessage.id,
+                  evidence: data.evidence,
+                }
+              : undefined,
+        })
+      }
+
+      setRevisingMessageId(null)
     } catch (err) {
       console.error('Chat error:', err)
 
@@ -1178,8 +1428,7 @@ async function handleChat() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Start with YouTube. TikTok, Instagram and Facebook URL
-              support will use the same Vidin pipeline.
+              YouTube links only. More platforms coming soon.
             </p>
           </div>
         </div>
@@ -1218,6 +1467,12 @@ async function handleChat() {
                 </>
               )}
             </Button>
+          </div>
+        )}
+
+        {isRecoveringTranscript && (
+          <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-border bg-secondary/40 p-4 text-sm text-foreground">
+            Your upload response was interrupted. VidIn is checking whether your transcript was saved. Please keep this page open and do not upload the same file again.
           </div>
         )}
 
@@ -1400,44 +1655,9 @@ async function handleChat() {
               </div>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                Ask questions about this recording. Vidin will answer
-                using the transcript.
+                Ask questions about this recording. VidIn uses transcript
+                and visual evidence to support its answers.
               </p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                type="text"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !isChatting) {
-                    handleChat()
-                  }
-                }}
-                placeholder="Ask something about this recording..."
-                className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-sm outline-none transition focus:ring-2 focus:ring-ring"
-                disabled={isChatting}
-              />
-
-              <Button
-                type="button"
-                onClick={handleChat}
-                disabled={isChatting || !question.trim()}
-                className="shrink-0"
-              >
-                {isChatting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Thinking...
-                  </>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    Ask
-                  </>
-                )}
-              </Button>
             </div>
 
             {isLoadingConversation && (
@@ -1452,13 +1672,70 @@ async function handleChat() {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className="rounded-xl border border-border bg-muted/20 p-5"
+                    className={
+                      message.role === 'user'
+                        ? "ml-auto max-w-[90%] rounded-2xl border border-border bg-muted/50 p-4 sm:max-w-[80%]"
+                        : "mr-auto w-full rounded-2xl border border-border bg-card p-5"
+                    }
                   >
-                    <div className="mb-3 flex items-center gap-2">
-                      <MessageSquareText className="h-4 w-4" />
-                      <span className="text-sm font-semibold">
-                        {message.role === 'user' ? 'You' : 'Vidin'}
-                      </span>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <MessageSquareText className="h-4 w-4" />
+                        <span className="text-sm font-semibold">
+                          {message.role === 'user' ? 'You' : 'VidIn'}
+                        </span>
+                        <time
+                          dateTime={message.created_at}
+                          className="text-xs text-muted-foreground"
+                        >
+                          {new Date(message.created_at).toLocaleString(undefined, {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })}
+                        </time>
+                      </div>
+
+                      {chatEditingUiEnabled && message.role === 'user' && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          title="Revise and ask again"
+                          aria-label="Revise and ask again"
+                          onClick={() => {
+                            setQuestion(message.content)
+                            setRevisingMessageId(message.id)
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={
+                          copiedMessageId === message.id
+                            ? 'Copied message'
+                            : 'Copy message'
+                        }
+                        title="Copy message"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(message.content)
+                            setCopiedMessageId(message.id)
+                          } catch {
+                            setError('Unable to copy this message.')
+                          }
+                        }}
+                      >
+                        {copiedMessageId === message.id ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
 
                     <p className="whitespace-pre-wrap text-sm leading-7">
@@ -1521,6 +1798,99 @@ async function handleChat() {
                 ))}
               </div>
             )}
+
+            <div className="mt-6 rounded-2xl border border-border bg-background p-3 shadow-sm">
+              {chatEditingUiEnabled && conversationBranches.length > 1 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium">
+                    Conversation version
+                  </span>
+                  <select
+                    aria-label="Conversation version"
+                    value={activeBranchId ?? ""}
+                    disabled={isChatting || isLoadingConversation}
+                    onChange={(event) =>
+                      void handleSwitchConversationBranch(
+                        event.target.value || null
+                      )
+                    }
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  >
+                    {conversationBranches.map((branch) => (
+                      <option
+                        key={branch.id ?? "original"}
+                        value={branch.id ?? ""}
+                      >
+                        {branch.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {revisingMessageId && (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                  <span className="text-xs text-muted-foreground">
+                    Editing this question creates a new conversation version
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setRevisingMessageId(null)
+                      setQuestion('')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              <textarea
+                rows={3}
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing &&
+                    !isChatting
+                  ) {
+                    event.preventDefault()
+                    handleChat()
+                  }
+                }}
+                placeholder="Ask anything about this recording..."
+                className="min-h-24 w-full resize-y rounded-xl bg-transparent px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-ring"
+                disabled={isChatting}
+              />
+
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">
+                  Enter to send · Shift+Enter for a new line
+                </span>
+
+                <Button
+                  type="button"
+                  onClick={handleChat}
+                  disabled={isChatting || !question.trim()}
+                >
+                  {isChatting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Thinking...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Ask VidIn
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
 
             {chatAnswer && messages.length === 0 && (
               <div className="mt-6 rounded-xl border border-border bg-muted/20 p-5">

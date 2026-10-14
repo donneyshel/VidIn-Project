@@ -69,7 +69,15 @@ function getRecordingIcon(sourceType: string) {
   return sourceType === 'url' ? FileVideo : FileAudio
 }
 
-export default async function LibraryPage() {
+type LibraryPageProps = {
+  searchParams: Promise<{ q?: string }>
+}
+
+export default async function LibraryPage({
+  searchParams,
+}: LibraryPageProps) {
+  const params = await searchParams
+  const query = typeof params.q === 'string' ? params.q.trim().slice(0, 100) : ''
   const supabase = await createClient()
 
   const {
@@ -118,6 +126,12 @@ export default async function LibraryPage() {
   }
 
   const recordings = (data ?? []) as Recording[]
+  const filteredRecordings = query
+    ? recordings.filter((recording) =>
+        [recording.title, recording.transcript ?? '']
+          .some((value) => value.toLowerCase().includes(query.toLowerCase()))
+      )
+    : recordings
 
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 lg:py-10">
@@ -144,6 +158,31 @@ export default async function LibraryPage() {
           New transcription
         </Link>
       </div>
+
+      <form action="/workspace/library" method="get" className="mb-6 flex flex-col gap-3 sm:flex-row">
+        <input
+          type="search"
+          name="q"
+          defaultValue={query}
+          placeholder="Search recordings and transcripts..."
+          aria-label="Search recordings and transcripts"
+          className="min-h-11 w-full rounded-xl border border-border bg-background px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <button
+          type="submit"
+          className="min-h-11 rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground"
+        >
+          Search
+        </button>
+        {query && (
+          <Link
+            href="/workspace/library"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-5 text-sm"
+          >
+            Clear
+          </Link>
+        )}
+      </form>
 
       {recordings.length === 0 ? (
         <div className="glass-card rounded-2xl p-10 text-center sm:p-14">
@@ -178,8 +217,23 @@ export default async function LibraryPage() {
             </span>
           </div>
 
+          {query && (
+            <p className="mb-4 text-sm text-muted-foreground">
+              {filteredRecordings.length} of {recordings.length} recordings match your search.
+            </p>
+          )}
+
+          {query && filteredRecordings.length === 0 && (
+            <div className="glass-card rounded-2xl p-8 text-center">
+              <h3 className="font-semibold">No matching recordings</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Try another title or keyword from a transcript.
+              </p>
+            </div>
+          )}
+
           <div className="grid gap-4">
-            {recordings.map((recording) => {
+            {filteredRecordings.map((recording) => {
               const Icon = getRecordingIcon(recording.source_type)
 
               return (

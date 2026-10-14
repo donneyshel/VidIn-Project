@@ -2,6 +2,42 @@ import { VIDIN_MODELS } from "@/lib/ai/models"
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
+import {
+  saveBranchMessage,
+  type BranchMessageInsertClient,
+  type BranchMessageRole,
+} from '@/lib/chat/save-branch-message'
+import {
+  prepareConversationEdit,
+} from '@/lib/chat/prepare-conversation-edit'
+import type {
+  BranchMessage,
+  ConversationBranch,
+} from '@/lib/chat/branch-history'
+import {
+  createConversationBranch,
+  type BranchInsertClient,
+} from '@/lib/chat/create-conversation-branch'
+import type {
+  PreparedConversationEdit,
+} from '@/lib/chat/prepare-conversation-edit'
+import {
+  createSupabaseBranchHistorySource,
+} from '@/lib/chat/supabase-branch-history'
+import {
+  loadBranchHistory,
+} from '@/lib/chat/load-branch-history'
+import {
+  assertConversationOwnership,
+  type BranchAuthorizationContext,
+} from '@/lib/chat/branch-authorization'
+import {
+  loadAuthorizedBranch,
+  type BranchLookupClient,
+} from '@/lib/chat/load-authorized-branch'
+import { createSupabaseConversationRevision } from '@/lib/chat/supabase-conversation-revision'
+import { buildRevisionHistory } from '@/lib/chat/revision-history'
+import { reconstructBranchHistory } from '@/lib/chat/branch-history'
 
 
 type TranscriptChunk = {
@@ -243,6 +279,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const recordingId = searchParams.get('recordingId')?.trim()
+    const requestedBranchId = searchParams.get('branchId')?.trim() || null
 
     if (!recordingId) {
       return NextResponse.json(
@@ -284,16 +321,77 @@ export async function GET(request: Request) {
     if (!conversation) {
       return NextResponse.json({
         conversationId: null,
+        branchId: null,
+        branches: [],
         messages: [],
       })
     }
 
-    const { data: messages, error: messagesError } = await supabase
-      .from('conversation_messages')
-      .select('id,role,content,created_at')
-      .eq('conversation_id', conversation.id)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: true })
+    // Branch history is disabled until migration activation.
+    const branchHistoryEnabled = process.env.VIDIN_CHAT_BRANCHES_ENABLED === 'true'
+
+    if (requestedBranchId && branchHistoryEnabled) {
+      const context: BranchAuthorizationContext = {
+        userId: user.id,
+        conversationId: conversation.id,
+        recordingId,
+      }
+
+      await verifyChatBranchOwnership(
+        supabase,
+        requestedBranchId,
+        context,
+      )
+
+      const source = createSupabaseBranchHistorySource(supabase)
+
+      const [allMessages, branches] = await Promise.all([
+        source.loadMessages(conversation.id, user.id),
+        source.loadBranches(conversation.id, user.id),
+      ])
+
+      const visibleMessages = reconstructBranchHistory(
+        allMessages,
+        branches,
+        requestedBranchId,
+      )
+
+      return NextResponse.json({
+        conversationId: conversation.id,
+        branchId: requestedBranchId,
+        branches: branches.map((branch) => ({
+          id: branch.id,
+        })),
+        messages: visibleMessages,
+      })
+    }
+
+    if (requestedBranchId) {
+      return NextResponse.json(
+        { error: 'Conversation versions are not available yet.' },
+        { status: 409 },
+      )
+    }
+
+    // Keep the original conversation separate from edited branches.
+    // Before migration, use the legacy query without branch_id.
+    const originalMessagesQuery = chatEvidenceStorageEnabled
+      ? supabase
+          .from('conversation_messages')
+          .select('id,role,content,created_at,evidence')
+          .eq('conversation_id', conversation.id)
+          .eq('user_id', user.id)
+      : supabase
+          .from('conversation_messages')
+          .select('id,role,content,created_at')
+          .eq('conversation_id', conversation.id)
+          .eq('user_id', user.id)
+
+    const { data: messages, error: messagesError } =
+      await (branchHistoryEnabled
+        ? originalMessagesQuery.is('branch_id', null)
+        : originalMessagesQuery
+      ).order('created_at', { ascending: true })
 
     if (messagesError) {
       console.error('Conversation messages lookup failed:', messagesError)
@@ -304,8 +402,15 @@ export async function GET(request: Request) {
       )
     }
 
+    const branches = branchHistoryEnabled
+      ? await createSupabaseBranchHistorySource(supabase)
+          .loadBranches(conversation.id, user.id)
+      : []
+
     return NextResponse.json({
       conversationId: conversation.id,
+      branchId: null,
+      branches: branches.map((branch) => ({ id: branch.id })),
       messages: messages ?? [],
     })
   } catch (error) {
@@ -321,6 +426,189 @@ export async function GET(request: Request) {
       { status: 500 },
     )
   }
+}
+
+// Enable only after the evidence JSONB migration is deployed.
+const chatEvidenceStorageEnabled =
+  process.env.VIDIN_CHAT_EVIDENCE_ENABLED === 'true'
+
+// Prepared edit validation; not active until branching is enabled.
+async function prepareVerifiedConversationEdit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  context: BranchAuthorizationContext,
+  activeBranchId: string | null,
+  editMessageId: string,
+  revisedQuestion: string,
+  messages: BranchMessage[],
+  branches: ConversationBranch[],
+) {
+  const { data: editableMessage, error } = await supabase
+    .from('conversation_messages')
+    .select('id,conversation_id,user_id,role')
+    .eq('id', editMessageId)
+    .eq('conversation_id', context.conversationId)
+    .eq('user_id', context.userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error('Editable message lookup failed.')
+  }
+
+  return prepareConversationEdit(
+    messages,
+    branches,
+    activeBranchId,
+    editMessageId,
+    revisedQuestion,
+    context,
+    editableMessage,
+  )
+}
+
+// Prepared branch-aware message persistence.
+// Invoke only after authenticated branch ownership verification
+// and after the conversation-branch migration is applied.
+async function saveVerifiedChatBranchMessage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  context: BranchAuthorizationContext,
+  branchId: string,
+  role: BranchMessageRole,
+  content: string,
+  evidence?: EvidenceReference[],
+) {
+  await verifyChatBranchOwnership(
+    supabase,
+    branchId,
+    context,
+  )
+
+  const messageClient =
+    supabase as unknown as BranchMessageInsertClient
+
+  return saveBranchMessage(messageClient, {
+    conversationId: context.conversationId,
+    userId: context.userId,
+    branchId,
+    role,
+    content,
+    ...(evidence !== undefined ? { evidence } : {}),
+  })
+}
+
+// Prepared branch creation integration.
+// Invoke only after edit authorization and database migration.
+async function persistVerifiedConversationEdit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  prepared: PreparedConversationEdit,
+) {
+  const branchClient = supabase as unknown as BranchInsertClient
+
+  return createConversationBranch(branchClient, prepared)
+}
+
+// Branch history loading is prepared but not active.
+// Call only after authentication, ownership checks, and migration.
+async function loadVerifiedChatBranchHistory(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  conversationId: string,
+  userId: string,
+  branchId: string,
+) {
+  const source = createSupabaseBranchHistorySource(supabase)
+
+  return loadBranchHistory(
+    source,
+    conversationId,
+    userId,
+    branchId,
+  )
+}
+
+// Prepared for branch-aware integration.
+// Not invoked until branching is fully implemented and tested.
+async function verifyChatBranchOwnership(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  branchId: string,
+  context: BranchAuthorizationContext,
+) {
+  const { data: conversation, error } = await supabase
+    .from('conversations')
+    .select('id,user_id,recording_id')
+    .eq('id', context.conversationId)
+    .eq('user_id', context.userId)
+    .eq('recording_id', context.recordingId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error('Conversation ownership lookup failed.')
+  }
+
+  assertConversationOwnership(conversation, context)
+
+  // Supabase query builders are promise-like rather than native Promises.
+  // The loader requires only this narrow query interface.
+  const branchClient = supabase as unknown as BranchLookupClient
+
+  return loadAuthorizedBranch(branchClient, branchId, context)
+}
+
+// Load the authenticated conversation graph for a revision.
+// This helper is inactive until the branch-aware POST flow is enabled.
+async function loadVerifiedRevisionContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  context: BranchAuthorizationContext,
+  activeBranchId: string | null,
+  editMessageId: string,
+  revisedQuestion: string,
+) {
+  const { data: conversation, error: conversationError } =
+    await supabase
+      .from('conversations')
+      .select('id,user_id,recording_id')
+      .eq('id', context.conversationId)
+      .eq('user_id', context.userId)
+      .eq('recording_id', context.recordingId)
+      .maybeSingle()
+
+  if (conversationError) {
+    throw new Error('Conversation ownership lookup failed.')
+  }
+
+  assertConversationOwnership(conversation, context)
+
+  if (activeBranchId) {
+    await verifyChatBranchOwnership(
+      supabase,
+      activeBranchId,
+      context,
+    )
+  }
+
+  const source = createSupabaseBranchHistorySource(supabase)
+
+  const [messages, branches] = await Promise.all([
+    source.loadMessages(context.conversationId, context.userId),
+    source.loadBranches(context.conversationId, context.userId),
+  ])
+
+  const prepared = await prepareVerifiedConversationEdit(
+    supabase,
+    context,
+    activeBranchId,
+    editMessageId,
+    revisedQuestion,
+    messages,
+    branches,
+  )
+
+  const history = buildRevisionHistory(
+    messages,
+    branches,
+    activeBranchId,
+    editMessageId,
+  )
+
+  return { prepared, history }
 }
 
 export async function POST(request: Request) {
@@ -350,6 +638,51 @@ export async function POST(request: Request) {
     if (!question) {
       return NextResponse.json(
         { error: 'A question is required.' },
+        { status: 400 },
+      )
+    }
+
+    const branchId =
+      typeof body?.branchId === 'string' ? body.branchId.trim() : ''
+
+    const editMessageId =
+      typeof body?.editMessageId === 'string'
+        ? body.editMessageId.trim()
+        : ''
+
+    const hasBranchRequest =
+      body?.branchId !== undefined ||
+      body?.editMessageId !== undefined
+
+    if (
+      hasBranchRequest &&
+      (
+        (body?.branchId !== undefined &&
+          (typeof body.branchId !== 'string' || !branchId)) ||
+        (body?.editMessageId !== undefined &&
+          (typeof body.editMessageId !== 'string' || !editMessageId))
+      )
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid conversation branch request.' },
+        { status: 400 },
+      )
+    }
+
+    // Explicitly distinguish normal chat, revisions, and branch replies.
+    // Both branch operations remain disabled until fully integrated.
+    const conversationOperation:
+      'normal' | 'edit' | 'branch-reply' =
+      editMessageId
+        ? 'edit'
+        : branchId
+          ? 'branch-reply'
+          : 'normal'
+
+    // Legacy chat cannot process branch operations.
+    if (!recordingId && conversationOperation !== 'normal') {
+      return NextResponse.json(
+        { error: 'A recording ID is required for conversation editing.' },
         { status: 400 },
       )
     }
@@ -490,53 +823,167 @@ export async function POST(request: Request) {
         conversation = newConversation
       }
 
-      const { data: previousMessages, error: previousMessagesError } =
-        await supabase
+      // Prepared authenticated revision entry point.
+      // Keep disabled until branch-aware persistence, history,
+      // and response handling are integrated together.
+      const prepareAuthenticatedRevision = async (
+        activeBranchId: string | null,
+        targetMessageId: string,
+        revisedQuestion: string,
+      ) => {
+        const context: BranchAuthorizationContext = {
+          userId: user.id,
+          conversationId: conversation.id,
+          recordingId,
+        }
+
+        return loadVerifiedRevisionContext(
+          supabase,
+          context,
+          activeBranchId,
+          targetMessageId,
+          revisedQuestion,
+        )
+      }
+
+      // Editing remains gated until the branch database migration
+      // and frontend switching are ready.
+      const revisionIntegrationEnabled = process.env.VIDIN_CHAT_BRANCHES_ENABLED === 'true'
+
+      let activeResponseBranchId: string | null = null
+      let userMessage: {
+        id: string
+        role: string
+        content: string
+        created_at: string
+      }
+
+      let history: Array<{
+        role: 'user' | 'assistant'
+        content: string
+      }>
+
+      if (
+        conversationOperation === 'branch-reply' &&
+        revisionIntegrationEnabled
+      ) {
+        const context: BranchAuthorizationContext = {
+          userId: user.id,
+          conversationId: conversation.id,
+          recordingId,
+        }
+
+        await verifyChatBranchOwnership(
+          supabase,
+          branchId,
+          context,
+        )
+
+        history = await loadVerifiedChatBranchHistory(
+          supabase,
+          conversation.id,
+          user.id,
+          branchId,
+        )
+
+        userMessage = await saveVerifiedChatBranchMessage(
+          supabase,
+          context,
+          branchId,
+          'user',
+          question,
+        )
+
+        activeResponseBranchId = branchId
+      } else if (
+        conversationOperation === 'edit' &&
+        revisionIntegrationEnabled
+      ) {
+        const revision = await prepareAuthenticatedRevision(
+          branchId || null,
+          editMessageId,
+          question,
+        )
+
+        const createdRevision = await createSupabaseConversationRevision(
+          supabase,
+          revision.prepared,
+        )
+
+        activeResponseBranchId = createdRevision.branch.id
+        userMessage = createdRevision.userMessage
+        history = revision.history
+      } else {
+        if (conversationOperation !== 'normal') {
+          return NextResponse.json(
+            {
+              error:
+                conversationOperation === 'edit'
+                  ? 'Message editing is not available yet. Your original conversation has not been changed.'
+                  : 'Branch replies are not available yet. Your original conversation has not been changed.',
+            },
+            { status: 409 },
+          )
+        }
+
+        // Keep original chat context isolated from edited branches.
+        // Preserve the legacy query until the migration is activated.
+        const originalHistoryQuery = supabase
           .from('conversation_messages')
           .select('role,content')
           .eq('conversation_id', conversation.id)
           .eq('user_id', user.id)
-          .order('created_at', { ascending: true })
-          .limit(30)
 
-      if (previousMessagesError) {
-        console.error(
-          'Previous conversation lookup failed:',
-          previousMessagesError,
-        )
+        const { data: previousMessages, error: previousMessagesError } =
+          await (revisionIntegrationEnabled
+            ? originalHistoryQuery.is('branch_id', null)
+            : originalHistoryQuery
+          )
+            .order('created_at', { ascending: false })
+            .limit(30)
 
-        return NextResponse.json(
-          { error: 'Failed to load conversation history.' },
-          { status: 500 },
-        )
+        if (previousMessagesError) {
+          console.error(
+            'Previous conversation lookup failed:',
+            previousMessagesError,
+          )
+
+          return NextResponse.json(
+            { error: 'Failed to load conversation history.' },
+            { status: 500 },
+          )
+        }
+
+        const { data: savedUserMessage, error: userMessageError } =
+          await supabase
+            .from('conversation_messages')
+            .insert({
+              conversation_id: conversation.id,
+              user_id: user.id,
+              role: 'user',
+              content: question,
+            })
+            .select('id,role,content,created_at')
+            .single()
+
+        if (userMessageError || !savedUserMessage) {
+          console.error('User message save failed:', userMessageError)
+
+          return NextResponse.json(
+            { error: 'Failed to save your message.' },
+            { status: 500 },
+          )
+        }
+
+        userMessage = savedUserMessage
+
+        history = [...(previousMessages ?? [])]
+          .reverse()
+          .map((message) => ({
+            role: message.role as 'user' | 'assistant',
+            content: message.content,
+          }))
       }
-
-      const { data: userMessage, error: userMessageError } = await supabase
-        .from('conversation_messages')
-        .insert({
-          conversation_id: conversation.id,
-          user_id: user.id,
-          role: 'user',
-          content: question,
-        })
-        .select('id,role,content,created_at')
-        .single()
-
-      if (userMessageError || !userMessage) {
-        console.error('User message save failed:', userMessageError)
-
-        return NextResponse.json(
-          { error: 'Failed to save your message.' },
-          { status: 500 },
-        )
-      }
-
-      const history = (previousMessages ?? [])
-        .slice(-30)
-        .map((message) => ({
-          role: message.role as 'user' | 'assistant',
-          content: message.content,
-        }))
 
       const response = await openai.responses.create({
         model: VIDIN_MODELS.intelligence,
@@ -658,6 +1105,39 @@ Do not wrap the JSON in markdown fences.
         )
       }
 
+      // Save regenerated answers to their revision branch.
+      // Normal chat continues using the original message table flow.
+      if (activeResponseBranchId) {
+        const context: BranchAuthorizationContext = {
+          userId: user.id,
+          conversationId: conversation.id,
+          recordingId,
+        }
+
+        const branchAnswer = await saveVerifiedChatBranchMessage(
+          supabase,
+          context,
+          activeResponseBranchId,
+          'assistant',
+          parsed.answer,
+          ...(chatEvidenceStorageEnabled ? [verifiedEvidence] : []),
+        )
+
+        await supabase
+          .from('conversations')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', conversation.id)
+          .eq('user_id', user.id)
+
+        return NextResponse.json({
+          answer: parsed.answer,
+          conversationId: conversation.id,
+          branchId: activeResponseBranchId,
+          messages: [userMessage, branchAnswer],
+          evidence: verifiedEvidence,
+        })
+      }
+
       const { data: assistantMessage, error: assistantMessageError } =
         await supabase
           .from('conversation_messages')
@@ -666,6 +1146,9 @@ Do not wrap the JSON in markdown fences.
             user_id: user.id,
             role: 'assistant',
             content: parsed.answer,
+            ...(chatEvidenceStorageEnabled
+              ? { evidence: verifiedEvidence }
+              : {}),
           })
           .select('id,role,content,created_at')
           .single()
@@ -693,6 +1176,7 @@ Do not wrap the JSON in markdown fences.
       return NextResponse.json({
         answer: parsed.answer,
         conversationId: conversation.id,
+        branchId: null,
         messages: [userMessage, assistantMessage],
         evidence: verifiedEvidence,
       })

@@ -253,7 +253,7 @@ export async function POST(request: Request) {
         })
 
         throw new Error(
-          "Recording saved, but billing confirmation is pending. Do not retry this upload yet."
+          "Your recording was saved, but processing confirmation is pending. Check your Library and do not upload the same file again yet."
         )
       }
 
@@ -312,7 +312,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: "Transcription failed.",
+        error: error instanceof Error
+          ? error.message
+          : "Transcription failed.",
         details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
