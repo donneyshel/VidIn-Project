@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { Menu, X, Waves } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -23,10 +23,12 @@ export function SiteNav() {
     <header className="fixed inset-x-0 top-0 z-50 px-4 pt-4">
       <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 rounded-2xl border border-border bg-background/70 px-4 py-2.5 backdrop-blur-xl">
         <Link href="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Waves className="size-4" />
-          </span>
-          <span className="text-base font-semibold tracking-tight">Vidin</span>
+          <img
+            src="/vidin-brand-square.png"
+            alt=""
+            className="size-9 rounded-lg object-contain"
+          />
+          <span className="text-base font-semibold tracking-tight">VidIn</span>
         </Link>
 
         <div className="hidden items-center gap-1 lg:flex">

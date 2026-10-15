@@ -9,10 +9,13 @@ const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
-  title: 'Vidin — Real-Time Media Transcription & AI Intelligence',
+  title: 'VidIn — Real-Time Media Transcription & AI Intelligence',
   description:
     'Extract real-time intelligence from any media stream. Transcribe, analyze, and act on audio and video with Vidin.',
-  generator: 'v0.app',
+  icons: {
+    icon: '/vidin-favicon.png',
+    apple: '/vidin-brand-square.png',
+  },
 }
 
 export const viewport: Viewport = {

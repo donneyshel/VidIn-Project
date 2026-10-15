@@ -14,7 +14,6 @@ import {
   Settings,
   Sparkles,
   Upload,
-  Waves,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -88,11 +87,13 @@ export function WorkspaceShell({
           className="flex items-center gap-2"
           onClick={() => setMobileOpen(false)}
         >
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Waves className="size-4" />
-          </span>
+          <img
+            src="/vidin-brand-square.png"
+            alt=""
+            className="size-9 rounded-lg object-contain"
+          />
           <span className="text-lg font-semibold tracking-tight">
-            Vidin
+            VidIn
           </span>
         </Link>
       </div>

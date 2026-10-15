@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowUpRight, Waves } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 
 const columns = [
   {
@@ -14,19 +14,19 @@ const columns = [
   {
     title: 'Company',
     links: [
-      { href: '/', label: 'About' },
-      { href: '/', label: 'Careers' },
-      { href: '/', label: 'Blog' },
-      { href: '/', label: 'Contact' },
+      { href: '/about', label: 'About' },
+      { href: '/careers', label: 'Careers' },
+      { href: '/blog', label: 'Blog' },
+      { href: '/contact', label: 'Contact' },
     ],
   },
   {
     title: 'Resources',
     links: [
-      { href: '/', label: 'Documentation' },
-      { href: '/', label: 'API Reference' },
-      { href: '/', label: 'Status' },
-      { href: '/', label: 'Security' },
+      { href: '/documentation', label: 'Documentation' },
+      { href: '/api-reference', label: 'API Reference' },
+      { href: '/status', label: 'Status' },
+      { href: '/security', label: 'Security' },
     ],
   },
 ]
@@ -66,7 +66,7 @@ export function SiteFooter() {
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <span className="flex size-8 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.035]">
-                <Waves className="size-4 text-[#c2b5ff]" />
+                <img src="/vidin-brand-square.png" alt="" className="size-6 rounded-full object-contain" />
               </span>
               <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-white/45">
                 Vidin / Final signal
@@ -96,9 +96,9 @@ export function SiteFooter() {
           <div>
             <Link href="/" className="group inline-flex items-center gap-3">
               <span className="flex size-9 items-center justify-center rounded-xl bg-white text-[#0b0a12] transition-transform duration-300 group-hover:rotate-6">
-                <Waves className="size-5" />
+                <img src="/vidin-brand-square.png" alt="" className="size-9 rounded-xl object-contain" />
               </span>
-              <span className="text-lg font-semibold tracking-[-0.03em]">Vidin</span>
+              <span className="text-lg font-semibold tracking-[-0.03em]">VidIn</span>
             </Link>
 
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/40">
@@ -140,16 +140,12 @@ export function SiteFooter() {
         {/* System footer */}
         <div className="flex flex-col gap-4 border-t border-white/[0.08] py-7 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-white/30">
-            © {new Date().getFullYear()} Vidin Labs, Inc. All rights reserved.
+            © {new Date().getFullYear()} VidIn. All rights reserved. Developed by DonneyShel Corp.
           </p>
 
           <div className="flex items-center gap-5">
             <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-white/25">
               Real-time media intelligence
-            </span>
-            <span className="hidden h-3 w-px bg-white/10 sm:block" />
-            <span className="font-mono text-[9px] uppercase tracking-[0.25em] text-white/25">
-              Sample rate: 192kHz / 32-bit
             </span>
           </div>
         </div>
