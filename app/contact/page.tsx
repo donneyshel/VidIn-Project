@@ -37,7 +37,15 @@ export default function Page() {
         </section>
         <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-7 sm:p-9">
           <h2 className="mb-4 text-xl font-semibold text-white">Contact information</h2>
-          <p className="leading-8 text-white/55">Our official contact details will be published here once confirmed. We don't want to direct you to an unverified address.</p>
+          <p className="leading-8 text-white/55">
+            For support, partnerships, business enquiries, or feedback, email VidIn directly.
+          </p>
+          <a
+            href="mailto:donneyshel@gmail.com"
+            className="mt-4 inline-block text-lg font-medium text-[#c2b5ff] underline underline-offset-4 hover:text-white"
+          >
+            donneyshel@gmail.com
+          </a>
         </section>
         </div>
       </div>
