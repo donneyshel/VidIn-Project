@@ -66,7 +66,7 @@ export default function AuthPage() {
     setLoading(false)
   }
 
-  async function handleOAuth(provider: 'google' | 'apple' | 'x') {
+  async function handleOAuth(provider: 'google' | 'x') {
     setOauthLoading(provider)
     setMessage('')
 
@@ -128,17 +128,6 @@ export default function AuthPage() {
                 {oauthLoading === 'google'
                   ? 'Connecting...'
                   : 'Continue with Google'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleOAuth('apple')}
-                disabled={oauthLoading !== null || loading}
-                className="w-full rounded-lg border border-border px-4 py-3 font-medium disabled:opacity-50"
-              >
-                {oauthLoading === 'apple'
-                  ? 'Connecting...'
-                  : 'Continue with Apple'}
               </button>
 
               <button
