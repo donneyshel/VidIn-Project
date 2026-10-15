@@ -19,6 +19,8 @@ export async function downloadVideo(
   )
 
   const ytDlpArgs = [
+    "--js-runtimes",
+    "node",
     "--format",
     "mp4",
     "--output",

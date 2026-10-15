@@ -103,6 +103,8 @@ export async function POST(request: Request) {
     await fs.access(ytDlpPath)
 
     const ytDlpArgs = [
+      '--js-runtimes',
+      'node',
       '--extract-audio',
       '--audio-format',
       'mp3',
@@ -382,9 +384,10 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to transcribe the media URL.',
+          error instanceof Error &&
+          /sign in to confirm you're not a bot|sign in to confirm you.re not a bot|login required|cookies.*authentication/i.test(error.message)
+            ? 'YouTube temporarily blocked access to this video. Please upload the video file directly or try another link.'
+            : 'Unable to process this media URL. Please try again or upload the file directly.',
       },
       { status: 500 }
     )
