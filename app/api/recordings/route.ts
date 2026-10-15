@@ -141,3 +141,61 @@ export async function GET() {
     )
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'You must be signed in to rename a recording.' },
+        { status: 401 }
+      )
+    }
+
+    const body = await request.json().catch(() => null)
+    const id = body?.id
+    const title = typeof body?.title === 'string' ? body.title.trim() : ''
+
+    if (typeof id !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ||
+        !title || title.length > 120) {
+      return NextResponse.json(
+        { error: 'Provide a valid recording ID and a title of 1–120 characters.' },
+        { status: 400 }
+      )
+    }
+
+    const { data, error } = await supabase
+      .from('recordings')
+      .update({ title })
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select('id, title')
+      .maybeSingle()
+
+    if (error) {
+      console.error('Recording rename error:', error)
+      return NextResponse.json(
+        { error: 'Failed to rename recording.' },
+        { status: 500 }
+      )
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        { error: 'Recording not found.' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({ success: true, recording: data })
+  } catch (error) {
+    console.error('Recording PATCH error:', error)
+    return NextResponse.json(
+      { error: 'Failed to rename recording.' },
+      { status: 500 }
+    )
+  }
+}

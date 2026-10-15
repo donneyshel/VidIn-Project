@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { RenameRecording } from '@/components/rename-recording'
 import {
   ArrowRight,
   Clock3,
@@ -22,6 +23,8 @@ type Recording = {
   title: string
   source_type: string
   source_url: string | null
+  thumbnail_url: string | null
+  source_platform: string | null
   transcript: string | null
   segments: unknown[]
   duration_seconds: number | null
@@ -91,7 +94,7 @@ export default async function LibraryPage({
   const { data, error } = await supabase
     .from('recordings')
     .select(
-      'id, title, source_type, source_url, transcript, segments, duration_seconds, created_at, updated_at',
+      'id, title, source_type, source_url, thumbnail_url, source_platform, transcript, segments, duration_seconds, created_at, updated_at',
     )
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
@@ -242,8 +245,20 @@ export default async function LibraryPage({
                   className="glass-card rounded-2xl p-5 transition-colors hover:border-white/15"
                 >
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary">
-                      <Icon className="size-5" />
+                    <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-secondary sm:w-48">
+                      {recording.thumbnail_url ? (
+                        <img
+                          src={recording.thumbnail_url}
+                          alt={`Thumbnail for ${recording.title}`}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-secondary to-background">
+                          <Icon className="size-9 text-muted-foreground" />
+                        </div>
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -252,7 +267,7 @@ export default async function LibraryPage({
                       </h3>
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                        <span>{getSourceLabel(recording.source_type)}</span>
+                        <span>{recording.source_platform || getSourceLabel(recording.source_type)}</span>
 
                         <span className="flex items-center gap-1">
                           <Clock3 className="size-3.5" />
@@ -270,6 +285,7 @@ export default async function LibraryPage({
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
+                      <RenameRecording id={recording.id} title={recording.title} />
                       <Link
                         href={`/workspace/insight-vault?recording=${recording.id}`}
                         className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary"

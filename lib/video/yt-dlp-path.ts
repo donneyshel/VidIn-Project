@@ -1,17 +1,27 @@
 import 'server-only'
 
+import fs from 'node:fs'
 import path from 'node:path'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
 
 export function getYtDlpPath(): string {
-  const entry = require.resolve('youtube-dl-exec')
+  const executable = process.platform === 'win32'
+    ? 'yt-dlp.exe'
+    : 'yt-dlp'
 
-  return path.resolve(
-    path.dirname(entry),
-    '..',
+  const binaryPath = path.resolve(
+    process.cwd(),
+    'node_modules',
+    'youtube-dl-exec',
     'bin',
-    process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp',
+    executable,
   )
+
+  if (!fs.existsSync(binaryPath)) {
+    throw new Error(
+      'VidIn could not find the bundled yt-dlp executable. ' +
+      'Check that youtube-dl-exec is installed.',
+    )
+  }
+
+  return binaryPath
 }

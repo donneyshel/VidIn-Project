@@ -1,3 +1,4 @@
+import { getVideoMetadata } from '@/lib/video/get-video-metadata'
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { promises as fs } from 'fs'
@@ -263,14 +264,12 @@ export async function POST(request: Request) {
         }))
       : []
 
-    const title =
-      (() => {
-        try {
-          return new URL(url).hostname
-        } catch {
-          return 'URL recording'
-        }
-      })()
+    const metadata = await getVideoMetadata(url).catch((error) => {
+      console.warn('Video metadata unavailable:', error)
+      return null
+    })
+
+    const title = metadata?.title?.trim() || new URL(url).hostname
 
     const { data: recording, error: recordingError } = await supabase
       .from('recordings')
@@ -279,6 +278,8 @@ export async function POST(request: Request) {
         title,
         source_type: 'url',
         source_url: url,
+        thumbnail_url: metadata?.thumbnailUrl ?? null,
+        source_platform: metadata?.platform ?? null,
         transcript: transcription.text,
         segments,
         duration_seconds: durationSeconds,
