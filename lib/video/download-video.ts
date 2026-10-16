@@ -22,9 +22,13 @@ export async function downloadVideo(
     "--js-runtimes",
     "node",
     "--format",
+    "best[ext=mp4][vcodec!=none][acodec!=none]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[acodec!=none]/bestaudio/best",
+    "--merge-output-format",
     "mp4",
     "--output",
     outputPath,
+    "--print",
+    "after_move:filepath",
     "--no-playlist",
   ]
 
@@ -41,7 +45,7 @@ export async function downloadVideo(
 
   ytDlpArgs.push(url)
 
-  await execFileAsync(
+  const { stdout } = await execFileAsync(
     ytDlpPath,
     ytDlpArgs,
     {
@@ -49,5 +53,13 @@ export async function downloadVideo(
     }
   )
 
-  return outputPath
+  const actualPath = stdout.trim().split("\\n").at(-1)?.trim()
+
+  if (!actualPath) {
+    throw new Error("Downloader did not report a media filepath.")
+  }
+
+  await fs.access(actualPath)
+
+  return actualPath
 }

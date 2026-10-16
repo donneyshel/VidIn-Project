@@ -8,23 +8,55 @@ const execFileAsync = promisify(execFile)
 
 export async function getVideoMetadata(url: string) {
   const cookiesPath = path.join(process.cwd(), "cookies.txt")
-  const args = ["--dump-single-json", "--skip-download", "--no-playlist"]
-  if (fs.existsSync(cookiesPath)) args.push("--cookies", cookiesPath)
+
+  const args = [
+    "--skip-download",
+    "--no-playlist",
+    "--no-warnings",
+    "--js-runtimes",
+    "node",
+    "--print",
+    "%(title|)j",
+    "--print",
+    "%(thumbnail|)j",
+    "--print",
+    "%(duration|)j",
+    "--print",
+    "%(extractor_key|)j",
+  ]
+
+  if (fs.existsSync(cookiesPath)) {
+    args.push("--cookies", cookiesPath)
+  }
+
   args.push(url)
 
   const { stdout } = await execFileAsync(
     getYtDlpPath(),
     args,
-    { maxBuffer: 10 * 1024 * 1024, timeout: 15000 }
+    { maxBuffer: 1024 * 1024, timeout: 20000 }
   )
 
-  const data = JSON.parse(stdout)
+  const lines = stdout.trim().split("\n")
+
+  function parseValue(index: number): unknown {
+    try {
+      return JSON.parse(lines[index] ?? "null")
+    } catch {
+      return null
+    }
+  }
+
+  const title = parseValue(0)
+  const thumbnail = parseValue(1)
+  const duration = parseValue(2)
+  const platform = parseValue(3)
 
   return {
-    title: typeof data.title === "string" ? data.title : null,
-    thumbnailUrl: typeof data.thumbnail === "string" ? data.thumbnail : null,
-    durationSeconds: typeof data.duration === "number" ? data.duration : null,
-    platform: typeof data.extractor_key === "string" ? data.extractor_key : null,
+    title: typeof title === "string" ? title : null,
+    thumbnailUrl: typeof thumbnail === "string" ? thumbnail : null,
+    durationSeconds: typeof duration === "number" ? duration : null,
+    platform: typeof platform === "string" ? platform : null,
     sourceUrl: url,
   }
 }

@@ -9,7 +9,8 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { createClient } from '@/lib/supabase/server'
 import { buildTranscriptChunks } from '@/lib/transcript-chunks'
-import { processVideo } from '@/lib/video/process-video'
+import { processVideoVision } from '@/lib/video/process-video-vision'
+import { downloadVideo } from '@/lib/video/download-video'
 import { saveVisualMemory } from '@/lib/video/save-visual-memory'
 import {
   reserveProcessingUsageWithClaim,
@@ -97,44 +98,18 @@ export async function POST(request: Request) {
       `${crypto.randomUUID()}.mp3`
     )
 
-    const ytDlpPath = getYtDlpPath()
-    const cookiesPath = path.join(process.cwd(), 'cookies.txt')
+    const videoPath = path.join(tempDir, 'source.mp4')
 
-    await fs.access(ytDlpPath)
+    const downloadedPath = await downloadVideo(url, videoPath)
 
-    const ytDlpArgs = [
-      '--js-runtimes',
-      'node',
-      '--extract-audio',
-      '--audio-format',
-      'mp3',
-      '--audio-quality',
-      '0',
-      '--no-playlist',
-      '--no-warnings',
-      '--prefer-free-formats',
-    ]
-
-    try {
-      await fs.access(cookiesPath)
-      ytDlpArgs.push('--cookies', cookiesPath)
-    } catch {
-      // No local cookies file; continue without authentication.
-    }
-
-    ytDlpArgs.push(
-      '--output',
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', downloadedPath,
+      '-vn',
+      '-codec:a', 'libmp3lame',
+      '-qscale:a', '4',
       audioPath,
-      url,
-    )
-
-    await execFileAsync(
-      ytDlpPath,
-      ytDlpArgs,
-      {
-        maxBuffer: 10 * 1024 * 1024,
-      }
-    )
+    ], { maxBuffer: 10 * 1024 * 1024 })
 
     const durationSeconds = await probeMediaDuration(audioPath)
 
@@ -323,19 +298,50 @@ export async function POST(request: Request) {
     chargeCompleted = true
     clearInterval(heartbeatTimer)
 
+    let visualStatus:
+      | 'completed'
+      | 'no_visual_events'
+      | 'failed'
+      | 'not_applicable' = 'failed'
+
     try {
-      const visualResult = await processVideo(url)
+      const { stdout: videoStream } = await execFileAsync('ffprobe', [
+        '-v', 'error',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=index',
+        '-of', 'csv=p=0',
+        downloadedPath,
+      ], {
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      })
+
+      if (!videoStream.trim()) {
+        visualStatus = 'not_applicable'
+      } else {
+        const visualEvents = await processVideoVision(downloadedPath)
 
       await saveVisualMemory(
         recording.id,
         user.id,
-        visualResult.visualEvents
+        visualEvents
       )
+
+      visualStatus = visualEvents.length > 0
+        ? 'completed'
+        : 'no_visual_events'
+
+        console.log('URL visual processing result:', {
+          recordingId: recording.id,
+          visualStatus,
+          eventCount: visualEvents.length,
+        })
+      }
     } catch (visualError) {
-      console.error(
-        'Visual pipeline error:',
-        visualError
-      )
+      console.error('Visual pipeline error:', {
+        recordingId: recording.id,
+        visualError,
+      })
     }
 
     console.log('URL TRANSCRIBE: preparing final JSON response', {
@@ -350,6 +356,7 @@ export async function POST(request: Request) {
       segments,
       sourceUrl: url,
       recording,
+      visualStatus,
     })
     } catch (processingError) {
       if (!chargeCompleted) {
