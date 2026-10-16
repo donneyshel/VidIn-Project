@@ -235,17 +235,17 @@ export default async function LibraryPage({
             </div>
           )}
 
-          <div className="grid gap-4">
+          <div className="grid min-w-0 grid-cols-1 gap-4">
             {filteredRecordings.map((recording) => {
               const Icon = getRecordingIcon(recording.source_type)
 
               return (
                 <article
                   key={recording.id}
-                  className="glass-card rounded-2xl p-5 transition-colors hover:border-white/15"
+                  className="glass-card min-w-0 max-w-full overflow-hidden rounded-2xl p-4 transition-colors hover:border-white/15 sm:p-5"
                 >
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                    <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-secondary sm:w-48">
+                  <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center">
+                    <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-secondary sm:w-48 xl:w-40">
                       {recording.thumbnail_url ? (
                         <img
                           src={recording.thumbnail_url}
@@ -262,7 +262,7 @@ export default async function LibraryPage({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate font-semibold">
+                      <h3 className="block max-w-full truncate font-semibold" title={recording.title}>
                         {recording.title}
                       </h3>
 
@@ -284,11 +284,11 @@ export default async function LibraryPage({
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 xl:w-auto xl:shrink-0">
                       <RenameRecording id={recording.id} title={recording.title} />
                       <Link
                         href={`/workspace/insight-vault?recording=${recording.id}`}
-                        className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary"
+                        className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary"
                       >
                         Open
                         <ArrowRight className="size-4" />
