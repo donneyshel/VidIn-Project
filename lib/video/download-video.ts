@@ -2,6 +2,7 @@ import { execFile } from "child_process"
 import { promisify } from "util"
 import path from "path"
 import fs from "fs/promises"
+import { getYtDlpCookies } from "./yt-dlp-cookies"
 
 import { getYtDlpPath } from "./yt-dlp-path"
 
@@ -13,10 +14,7 @@ export async function downloadVideo(
 ) {
   const ytDlpPath = getYtDlpPath()
 
-  const cookiesPath = path.join(
-    process.cwd(),
-    "cookies.txt"
-  )
+  const cookies = await getYtDlpCookies()
 
   const ytDlpArgs = [
     "--js-runtimes",
@@ -32,34 +30,28 @@ export async function downloadVideo(
     "--no-playlist",
   ]
 
-  try {
-    await fs.access(cookiesPath)
-
-    ytDlpArgs.push(
-      "--cookies",
-      cookiesPath
-    )
-  } catch {
-    // No local cookies file; continue without authentication.
+  if (cookies.cookiesPath) {
+    ytDlpArgs.push("--cookies", cookies.cookiesPath)
   }
 
   ytDlpArgs.push(url)
 
-  const { stdout } = await execFileAsync(
-    ytDlpPath,
-    ytDlpArgs,
-    {
-      maxBuffer: 10 * 1024 * 1024,
+  try {
+    const { stdout } = await execFileAsync(
+      ytDlpPath,
+      ytDlpArgs,
+      { maxBuffer: 10 * 1024 * 1024 }
+    )
+
+    const actualPath = stdout.trim().split("\\n").at(-1)?.trim()
+
+    if (!actualPath) {
+      throw new Error("Downloader did not report a media filepath.")
     }
-  )
 
-  const actualPath = stdout.trim().split("\\n").at(-1)?.trim()
-
-  if (!actualPath) {
-    throw new Error("Downloader did not report a media filepath.")
+    await fs.access(actualPath)
+    return actualPath
+  } finally {
+    await cookies.cleanup()
   }
-
-  await fs.access(actualPath)
-
-  return actualPath
 }

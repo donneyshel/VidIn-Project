@@ -1,13 +1,12 @@
 import { execFile } from "child_process"
 import { promisify } from "util"
 import { getYtDlpPath } from "./yt-dlp-path"
-import path from "path"
-import fs from "fs"
+import { getYtDlpCookies } from "./yt-dlp-cookies"
 
 const execFileAsync = promisify(execFile)
 
 export async function getVideoMetadata(url: string) {
-  const cookiesPath = path.join(process.cwd(), "cookies.txt")
+  const cookies = await getYtDlpCookies()
 
   const args = [
     "--skip-download",
@@ -25,17 +24,24 @@ export async function getVideoMetadata(url: string) {
     "%(extractor_key|)j",
   ]
 
-  if (fs.existsSync(cookiesPath)) {
-    args.push("--cookies", cookiesPath)
+  if (cookies.cookiesPath) {
+    args.push("--cookies", cookies.cookiesPath)
   }
 
   args.push(url)
 
-  const { stdout } = await execFileAsync(
-    getYtDlpPath(),
-    args,
-    { maxBuffer: 1024 * 1024, timeout: 20000 }
-  )
+  let stdout: string
+
+  try {
+    const result = await execFileAsync(
+      getYtDlpPath(),
+      args,
+      { maxBuffer: 1024 * 1024, timeout: 20000 }
+    )
+    stdout = result.stdout
+  } finally {
+    await cookies.cleanup()
+  }
 
   const lines = stdout.trim().split("\n")
 
